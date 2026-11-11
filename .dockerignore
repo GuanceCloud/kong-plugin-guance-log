@@ -1,0 +1,6 @@
+.git
+.github
+spec
+*.rock
+__pycache__
+.test-results

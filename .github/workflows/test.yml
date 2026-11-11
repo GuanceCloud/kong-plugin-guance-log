@@ -1,0 +1,47 @@
+name: Test
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  kong:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: kong:3.9.1
+            workers: 1
+          - image: kong:3.9.4
+            workers: 2
+    steps:
+      - uses: actions/checkout@v4
+      - name: Pull Kong
+        run: docker pull '${{ matrix.image }}'
+      - name: Unit and schema tests
+        run: >-
+          docker run --rm --user root -v "$PWD:/plugin:ro" -w /plugin
+          --entrypoint resty '${{ matrix.image }}' --errlog-level error spec/unit.lua
+      - name: Real Gateway integration tests
+        run: python3 spec/integration.py --image '${{ matrix.image }}' --workers '${{ matrix.workers }}'
+  lint-package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install lint tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y lua-check
+      - name: Lint Lua
+        run: luacheck kong spec/unit.lua
+      - name: Build binary rock
+        run: |
+          docker run --rm --user root -v "$PWD:/plugin" -w /plugin --entrypoint sh kong:3.9.4 -c '
+            set -e
+            apt-get update -qq
+            apt-get install -y -qq zip
+            luarocks make --pack-binary-rock kong-plugin-guance-log-0.1.0-1.rockspec
+          '
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kong-plugin-guance-log
+          path: '*.all.rock'

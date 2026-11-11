@@ -1,0 +1,19 @@
+_format_version: "3.0"
+services:
+  - name: example-api
+    url: http://httpbin:8000
+    routes:
+      - name: example-api
+        paths: [/api]
+plugins:
+  - name: guance-log
+    config:
+      endpoint: http://datakit:9529
+      source: kong
+      service: api-gateway
+      pipeline: guance-log.p
+      tags:
+        env: production
+      queue:
+        max_batch_size: 100
+        max_coalescing_delay: 1
