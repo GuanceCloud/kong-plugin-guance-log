@@ -45,6 +45,19 @@ Add `guance-log` to Kong's `plugins` setting, then restart/reload Kong. Installi
 the package makes the plugin available; creating a plugin entity enables it for
 traffic. The package has **not** been published to LuaRocks or the Kong Plugin Hub.
 
+### Install the release package
+
+Download `kong-plugin-guance-log-0.1.0-1.all.rock` and `SHA256SUMS` from
+[v0.1.0](https://github.com/GuanceCloud/kong-plugin-guance-log/releases/tag/v0.1.0).
+Verify the package checksum against its entry in `SHA256SUMS`, then install it:
+
+```sh
+luarocks install ./kong-plugin-guance-log-0.1.0-1.all.rock
+```
+
+The release also includes a source archive and the versioned rockspec. See
+[CHANGELOG.md](CHANGELOG.md) for release scope and compatibility.
+
 ### Build a binary rock
 
 The packaging environment must have `zip` installed:
@@ -60,10 +73,8 @@ luarocks install ./kong-plugin-guance-log-0.1.0-1.all.rock
 ```
 
 The checked-in rockspec points to the public
-[source repository](https://github.com/GuanceCloud/kong-plugin-guance-log) and
-tracks `main` for development. Before publishing a versioned package to LuaRocks,
-replace `source.branch` with `source.tag` pointing to the matching immutable release
-tag. Verify an installation from that release source before uploading it.
+[source repository](https://github.com/GuanceCloud/kong-plugin-guance-log) and is
+pinned to the `v0.1.0` release tag instead of a moving branch.
 
 ## Prepare DataKit
 

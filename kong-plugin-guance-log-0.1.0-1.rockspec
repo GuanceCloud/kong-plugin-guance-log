@@ -1,10 +1,9 @@
 package = "kong-plugin-guance-log"
 version = "0.1.0-1"
--- Development source. Pin source.tag instead of source.branch before publishing
--- a versioned package to LuaRocks.
+-- Versioned source is pinned to the corresponding release tag.
 source = {
   url = "git+https://github.com/GuanceCloud/kong-plugin-guance-log.git",
-  branch = "main",
+  tag = "v0.1.0",
 }
 description = {
   summary = "Send Kong access logs to Guance through DataKit Log Streaming",

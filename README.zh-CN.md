@@ -36,7 +36,11 @@ luarocks make kong-plugin-guance-log-0.1.0-1.rockspec
 相同版本；自建混合部署需要在控制面和所有数据面安装。安装完成后，还需创建插件配置
 才能对流量生效。
 
-构建二进制安装包（打包环境需要 `zip`）：
+也可以从 [v0.1.0 Release](https://github.com/GuanceCloud/kong-plugin-guance-log/releases/tag/v0.1.0)
+下载 `kong-plugin-guance-log-0.1.0-1.all.rock` 和 `SHA256SUMS`，核对安装包的
+SHA-256 校验值后，在目标 Kong 环境安装。发布范围与兼容性见 [CHANGELOG.md](CHANGELOG.md)。
+
+自行构建二进制安装包（打包环境需要 `zip`）：
 
 ```sh
 luarocks make --pack-binary-rock kong-plugin-guance-log-0.1.0-1.rockspec
@@ -49,8 +53,7 @@ luarocks install ./kong-plugin-guance-log-0.1.0-1.all.rock
 ```
 
 当前 rockspec 指向[公开源码仓库](https://github.com/GuanceCloud/kong-plugin-guance-log)，
-开发阶段跟踪 `main`。发布版本包到 LuaRocks 前，需要将 `source.branch` 替换为
-指向对应不可变版本 tag 的 `source.tag`，并验证从该版本源码安装。
+固定使用 `v0.1.0` 版本 tag，不跟随分支变化。
 目前未发布到 LuaRocks 或 Plugin Hub。
 
 ## 配置 DataKit
