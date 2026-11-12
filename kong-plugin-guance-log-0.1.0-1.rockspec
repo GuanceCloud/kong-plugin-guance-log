@@ -1,8 +1,11 @@
 package = "kong-plugin-guance-log"
 version = "0.1.0-1"
--- Local source for development. Before public distribution, replace this with
--- the real repository URL and the corresponding immutable release tag.
-source = { url = "file://." }
+-- Development source. Pin source.tag instead of source.branch before publishing
+-- a versioned package to LuaRocks.
+source = {
+  url = "git+https://github.com/GuanceCloud/kong-plugin-guance-log.git",
+  branch = "main",
+}
 description = {
   summary = "Send Kong access logs to Guance through DataKit Log Streaming",
   license = "Apache-2.0",

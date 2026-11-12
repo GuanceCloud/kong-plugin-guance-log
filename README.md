@@ -59,10 +59,11 @@ Install the resulting file in your Kong installation:
 luarocks install ./kong-plugin-guance-log-0.1.0-1.all.rock
 ```
 
-The checked-in rockspec uses `file://.` for local development. Before public
-distribution, update `source.url` to the actual public source repository and
-`source.tag` to its matching immutable release tag. Verify an installation from
-that release source before uploading it. No public repository is assumed here.
+The checked-in rockspec points to the public
+[source repository](https://github.com/GuanceCloud/kong-plugin-guance-log) and
+tracks `main` for development. Before publishing a versioned package to LuaRocks,
+replace `source.branch` with `source.tag` pointing to the matching immutable release
+tag. Verify an installation from that release source before uploading it.
 
 ## Prepare DataKit
 

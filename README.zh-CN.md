@@ -48,8 +48,10 @@ luarocks make --pack-binary-rock kong-plugin-guance-log-0.1.0-1.rockspec
 luarocks install ./kong-plugin-guance-log-0.1.0-1.all.rock
 ```
 
-当前 rockspec 的 `file://.` 用于本地开发。公开发布前，需要替换成真实公共仓库 URL
-及对应不可变版本 tag，并验证从该版本源码安装。目前未发布到 LuaRocks 或 Plugin Hub。
+当前 rockspec 指向[公开源码仓库](https://github.com/GuanceCloud/kong-plugin-guance-log)，
+开发阶段跟踪 `main`。发布版本包到 LuaRocks 前，需要将 `source.branch` 替换为
+指向对应不可变版本 tag 的 `source.tag`，并验证从该版本源码安装。
+目前未发布到 LuaRocks 或 Plugin Hub。
 
 ## 配置 DataKit
 
