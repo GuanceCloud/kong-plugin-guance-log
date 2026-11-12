@@ -2,175 +2,181 @@
 
 [English](README.md)
 
-插件名：`guance-log`。安装包名：`kong-plugin-guance-log`。
-
-将 Kong HTTP 访问日志通过 DataKit Log Streaming 上报至观测云：
+通过 **DataKit Log Streaming** 将 Kong HTTP 访问日志上报到观测云。
+插件名：`guance-log`，已验证 Kong Gateway **3.9.1 和 3.9.4**。
 
 ```text
-Kong log 阶段 → 有界内存队列 → 后台批量 NDJSON → DataKit → 观测云
+Kong → DataKit Log Streaming → 观测云日志
 ```
 
-当前版本 `0.1.0` 面向 Kong Gateway 3.9.x，已验证官方镜像 `kong:3.9.1`
-的单 worker 和 `kong:3.9.4` 的双 worker、DB-less 部署。其他 Kong 版本、
-传统部署、混合部署及 Konnect 尚未实测。当前采集 HTTP/HTTPS 访问日志，
-不采集 Kong/Nginx 进程错误日志，也不提供 DataWay 直连模式。
+## 开始之前
+
+- 已有连接到目标工作空间的 DataKit。按 [DataKit 配置说明](docs/datakit.zh-CN.md)
+  开启 Log Streaming，并安装配套 `guance-log.p` Pipeline。
+- 在 Kong 运行环境中执行安装命令，需要 LuaRocks、`curl` 或 `wget`、`unzip`，以及
+  安装 Lua 模块的权限。Ubuntu/Debian 下载依赖：
+  `apt-get update && apt-get install -y curl unzip`。
+- Docker/Kubernetes 部署请将插件安装到 Gateway 镜像中，参见
+  [Docker 安装示例](docs/development.zh-CN.md#docker-镜像)。
 
 ## 安装
 
-在仓库目录构建包含插件的镜像：
+### 1. 安装插件
+
+直接从 GitHub Release 安装完整安装包：
 
 ```sh
-docker build --build-arg KONG_IMAGE=kong:3.9.4 -t kong-guance-log:0.1.0 .
+luarocks install https://github.com/GuanceCloud/kong-plugin-guance-log/releases/download/v0.1.0/kong-plugin-guance-log-0.1.0-1.all.rock
 ```
 
-Dockerfile 已设置 `KONG_PLUGINS=bundled,guance-log`。如果已有其他自定义插件，
-请在覆盖该环境变量时同时保留它们。
+不需要单独下载 rockspec，也不需要编译源码。当前尚未上架 LuaRocks 仓库，
+离线环境见 [离线安装](#离线安装)。
 
-也可以在 Kong 环境中从本地源码安装：
+### 2. 加载插件
+
+在 `kong.conf` 中添加插件，保留已有的其他自定义插件：
+
+```ini
+plugins = bundled,guance-log
+```
+
+然后重启 Kong：
 
 ```sh
-luarocks make kong-plugin-guance-log-0.1.0-1.rockspec
+kong restart
 ```
 
-设置 `KONG_PLUGINS=bundled,guance-log` 后重启或重新加载 Kong。在每个相关节点安装
-相同版本；自建混合部署需要在控制面和所有数据面安装。安装完成后，还需创建插件配置
-才能对流量生效。
+容器部署在部署配置中设置 `KONG_PLUGINS=bundled,guance-log`，并发布已安装插件的
+镜像。每个相关 Gateway 节点都应安装相同版本。
 
-也可以从 [v0.1.0 Release](https://github.com/GuanceCloud/kong-plugin-guance-log/releases/tag/v0.1.0)
-下载 `kong-plugin-guance-log-0.1.0-1.all.rock` 和 `SHA256SUMS`，核对安装包的
-SHA-256 校验值后，在目标 Kong 环境安装。发布范围与兼容性见 [CHANGELOG.md](CHANGELOG.md)。
+### 3. 启用日志采集
 
-自行构建二进制安装包（打包环境需要 `zip`）：
+按部署方式选择以下一种配置。将下面的 `http://datakit:9529` 替换为
+**Kong 可以访问的 DataKit 地址**。
+
+**有数据库模式：通过 Admin API 全局启用**
 
 ```sh
-luarocks make --pack-binary-rock kong-plugin-guance-log-0.1.0-1.rockspec
+curl --fail-with-body -X POST http://localhost:8001/plugins \
+  --data 'name=guance-log' \
+  --data 'config.endpoint=http://datakit:9529' \
+  --data 'config.service=api-gateway' \
+  --data 'config.pipeline=guance-log.p'
 ```
 
-在目标 Kong 环境安装：
+**DB-less 模式：合并到声明式配置**
+
+```yaml
+_format_version: "3.0"
+plugins:
+  - name: guance-log
+    config:
+      endpoint: http://datakit:9529
+      service: api-gateway
+      pipeline: guance-log.p
+```
+
+保留已有 Service 和 Route，通过现有部署流程重新加载配置。DB-less 模式不能使用
+上面的单实体 Admin API 写入命令。完整示例见 [examples/kong.yml](examples/kong.yml)。
+
+### 4. 验证日志
+
+1. 检查返回的 `enabled_plugins` 中包含 `guance-log`：
+
+   ```sh
+   curl --fail --silent --show-error http://localhost:8001/plugins/enabled
+   ```
+
+2. 通过已有的 Kong Route 发起一次请求，将 `your-route` 替换为实际路径：
+
+   ```sh
+   curl -i http://localhost:8000/your-route
+   ```
+
+3. 在观测云 **日志** 中选择 DataKit 对应工作空间和最近时间范围，筛选
+   `source=kong`、`service=api-gateway`。等待正常批量发送及转发延迟后，检查
+   `http_path`、`http_status`、`request_id` 等字段。
+
+`enabled_plugins` 只表示插件已加载；日志入库还需要插件实例配置和 DataKit 转发连接
+正常。未看到日志时，按 [常见问题](#常见问题) 排查。
+
+## 作用域
+
+在有数据库模式下，使用以下 Admin API 路径，并传入步骤 3 中的插件配置：
+
+| 作用域 | 接口 | 采集范围 |
+| --- | --- | --- |
+| 全局 | `POST /plugins` | 所有适用请求 |
+| Service | `POST /services/{service}/plugins` | 指定 Service 的请求 |
+| Route | `POST /routes/{route}/plugins` | 匹配指定 Route 的请求 |
+| Consumer | `POST /consumers/{consumer}/plugins` | 认证为指定 Consumer 的请求 |
+
+`config.service` 是观测云服务标签，真正的作用域由插件挂载位置决定。
+例如，仅采集名为 `example-api` 的 Service：
+
+```sh
+curl --fail-with-body -X POST http://localhost:8001/services/example-api/plugins \
+  --data 'name=guance-log' \
+  --data 'config.endpoint=http://datakit:9529' \
+  --data 'config.service=example-api' \
+  --data 'config.pipeline=guance-log.p'
+```
+
+<details>
+<summary>Route 和 Consumer 配置示例</summary>
+
+将实体名称替换为已有实体的名称或 ID。
+Consumer 作用域需要配合能够识别 Consumer 的认证插件。
+
+```sh
+curl --fail-with-body -X POST http://localhost:8001/routes/example-route/plugins \
+  --data 'name=guance-log' \
+  --data 'config.endpoint=http://datakit:9529' \
+  --data 'config.pipeline=guance-log.p'
+
+curl --fail-with-body -X POST http://localhost:8001/consumers/example-consumer/plugins \
+  --data 'name=guance-log' \
+  --data 'config.endpoint=http://datakit:9529' \
+  --data 'config.pipeline=guance-log.p'
+```
+
+</details>
+
+## 离线安装
+
+从 [v0.1.0 Release](https://github.com/GuanceCloud/kong-plugin-guance-log/releases/tag/v0.1.0)
+下载 `kong-plugin-guance-log-0.1.0-1.all.rock` 和 `SHA256SUMS`，复制到 Kong 环境。
+根据校验文件核对安装包的 SHA-256 后执行：
 
 ```sh
 luarocks install ./kong-plugin-guance-log-0.1.0-1.all.rock
 ```
 
-当前 rockspec 指向[公开源码仓库](https://github.com/GuanceCloud/kong-plugin-guance-log)，
-固定使用 `v0.1.0` 版本 tag，不跟随分支变化。
-目前未发布到 LuaRocks 或 Plugin Hub。
+之后继续步骤 2–4。其他 Release 文件供源码构建使用。
 
-## 配置 DataKit
+## 常见问题
 
-1. 按常规方式配置 DataKit 到工作空间的 DataWay 连接。
-2. 将 [logstreaming.conf](examples/datakit/logstreaming.conf) 放到
-   `<DataKit>/conf.d/log/`，启用 Log Streaming。
-3. 将 [guance-log.p](examples/datakit/guance-log.p) 放到
-   `<DataKit>/pipeline/guance-log.p`，重启 DataKit。
-4. 确保 Kong 可以访问 DataKit HTTP 端口，通常为 `9529`。不同容器之间应使用
-   DataKit 的可达服务地址；`127.0.0.1` 指向容器自身。
+| 现象 | 检查项 |
+| --- | --- |
+| LuaRocks 提示缺少下载或解包工具 | 在安装环境中补充 `curl` 或 `wget`，以及 `unzip` |
+| 插件已启用但未安装 | 确认 Kong 镜像/每个节点均已安装，随后重启 |
+| `enabled_plugins` 中没有插件 | 检查 `plugins` / `KONG_PLUGINS`，重启或重新部署 |
+| Admin API 写入返回 405 | DB-less 部署应使用声明式配置 |
+| 请求正常，但看不到日志 | 检查实例作用域、Kong 到 DataKit 的连通性和 DataKit 转发/错误日志 |
+| JSON 只有 `message`，没有独立字段 | 安装 `guance-log.p` 并设置 `config.pipeline=guance-log.p`，参见 [DataKit 配置](docs/datakit.zh-CN.md) |
+| 容器访问不到 `127.0.0.1:9529` | 使用可达的 DataKit 主机/服务地址，回环地址指向容器自身 |
 
-配套 Pipeline 要求 `ignore_url_tags=false`、`json_as_fields=false`。它会保留原始
-`message`，提取访问日志字段，并使用原始请求时间作为日志时间；Header 对象提取为
-JSON 字符串。不配置 Pipeline 也能接收文本日志，但默认使用采集器接收时间。
+## 更多配置
 
-DataWay 文档未列出兼容的 Log Streaming 接口，因此本版只支持 DataKit，不能将接收
-地址替换为 DataWay 或其 `/v1/write/logging` 接口。
+只有 `endpoint` 为必填项。快速开始额外配置了服务标签和配套 Pipeline，便于直接检索
+日志字段，并使用原始请求时间。
 
-## 配置 Kong
+- [完整配置、日志字段与发送行为](docs/configuration.zh-CN.md)
+- [DataKit 配置](docs/datakit.zh-CN.md)
+- [源码安装、镜像构建、打包与测试](docs/development.zh-CN.md)
+- [变更记录](CHANGELOG.md) · [验证范围](VALIDATION.md)
 
-在现有 DB-less 配置中添加：
+队列位于内存中。本版不提供 DataWay 直连、Trace 导出及进程错误日志采集。
+传统/混合部署、Konnect 和真实观测云工作空间入库尚未验证。
 
-```yaml
-plugins:
-  - name: guance-log
-    config:
-      endpoint: http://datakit:9529
-      source: kong
-      service: api-gateway
-      pipeline: guance-log.p
-      tags:
-        env: production
-      queue:
-        max_batch_size: 100
-        max_coalescing_delay: 1
-```
-
-完整示例见 [examples/kong.yml](examples/kong.yml)，请替换其中的上游服务地址。
-也可以通过 Admin API 配置全局插件：
-
-```sh
-curl --fail-with-body -X POST http://localhost:8001/plugins \
-  -H 'Content-Type: application/json' \
-  --data '{"name":"guance-log","config":{"endpoint":"http://datakit:9529","service":"api-gateway","pipeline":"guance-log.p"}}'
-```
-
-支持在 Service 或 Route 上使用对应的 Admin API 配置插件。
-
-## 主要参数
-
-下表参数均位于 `config`，完整约束与字段表见 [英文说明](README.md#configuration)。
-
-| 参数 | 默认值 | 含义 |
-| --- | --- | --- |
-| `endpoint` | 必填 | DataKit HTTP(S) 地址，允许完整 `/v1/write/logstreaming` 路径；不允许凭据、查询参数或 fragment |
-| `source` / `service` | 均为 `kong` | 日志来源及观测服务标签，后者与 Kong Service 实体名独立 |
-| `pipeline` | 无 | DataKit Pipeline 名称，例如 `guance-log.p` |
-| `storage_index` | 无 | 日志索引，以小写字母开头，仅含小写字母、数字及下划线 |
-| `tags` | `{}` | 自定义标签；值不允许逗号、等号和控制字符 |
-| `request_headers_allowlist` / `response_headers_allowlist` | `[]` | 请求头、响应头采集白名单，大小写不敏感 |
-| `connect_timeout` / `send_timeout` / `read_timeout` | `1000` / `5000` / `5000` | 连接、发送、读取超时，单位毫秒 |
-| `keepalive` | `60000` | 空闲连接保留毫秒数；`0` 关闭复用 |
-| `ssl_verify` | `true` | 验证 HTTPS 接收端证书，私有 CA 通过 Kong 信任配置添加 |
-| `max_entry_bytes` | `65536` | 单条序列化日志最大字节数，超限丢弃 |
-| `max_payload_bytes` | `1048576` | 单次 HTTP 请求体最大字节数，含换行符 |
-| `queue.max_batch_size` | `100` | 每批最大条数，超出字节限制时继续拆分 |
-| `queue.max_coalescing_delay` | `1` | 最大批量等待秒数；每批一条时无效 |
-| `queue.max_entries` / `queue.max_bytes` | `10000` / `10485760` | 每个 worker、每个队列的待发送容量 |
-| `queue.initial_retry_delay` / `queue.max_retry_delay` | `0.1` / `10` | 指数退避初始及最大间隔，单位秒 |
-| `queue.max_retry_time` | `60` | 失败批次的重试预算秒数 |
-
-`max_payload_bytes` 至少为 `max_entry_bytes + 1`；队列字节容量至少能放下一条最大日志。
-`source`、`service`、`status`、`collector_source_ip`、`ip_or_hostname` 为保留标签名。
-
-## 日志内容和发送行为
-
-- 默认包含时间、请求 ID、方法、无查询参数的路径、HTTP 状态码、客户端 IP、请求/响应
-  字节数、延迟、Kong Service/Route/Consumer/Workspace 标识。
-- `status` 为日志等级，4xx 对应 `warning`，5xx 对应 `error`；`http_status` 为数值状态码。
-- `duration` 单位为纳秒；`timestamp_ms` 为 Unix 毫秒；名称以 `_ms` 结尾的延迟字段单位为毫秒。
-- 合法的入站 W3C version-00 `traceparent` 会映射到 `trace_id` 和 `parent_span_id`。
-  这是调用方上下文，不代表 Kong 自身创建的 span，也不承诺取得其他插件新生成的上下文。
-- 不采集请求体、响应体和查询参数。Header 仅按白名单采集；禁止将 Authorization、
-  Proxy-Authorization、Cookie、Set-Cookie、X-API-Key 加入白名单。路径中的敏感值不会自动脱敏。
-- 每行一条 JSON，以换行结尾；批量数据不是 JSON 数组。发送在后台定时器中执行。
-- 网络/TLS/超时、HTTP 429 和 5xx 触发有限重试；其他非 2xx 作为永久拒绝丢弃，
-  包括重定向；不跟随重定向，暂不解析 `Retry-After`。
-- 拆分批次在重试时跳过已确认成功的部分；接收后响应超时仍可能导致重复。
-- 队列按工作空间、插件实例和配置指纹隔离，配置变更不会改变待发送日志的目标。
-- 队列满时淘汰最旧待发送日志，worker 异常退出会丢失内存数据。容量不包含在途批次及
-  Lua 对象开销，且随 worker 和插件实例数量增加；不保证不丢失或恰好一次投递。
-- 插件丢弃日志按原因累计，每个 worker 每 60 秒最多在下一次同类事件时输出一次诊断；
-  Kong 队列另行输出容量及重试耗尽诊断，目前没有独立指标接口。
-- DataKit 的 HTTP 2xx 仅表示接收，不表示观测云已入库，需同时检查 DataKit 转发和 Pipeline。
-
-## 开发验证
-
-Docker 和 Python 3.9+ 即可运行，不需要真实工作空间 Token。集成测试使用 Linux host
-网络、随机本地端口和模拟接收端，结束时清理自己创建的容器及临时文件。
-
-```sh
-docker run --rm --user root -v "$PWD:/plugin:ro" -w /plugin \
-  --entrypoint resty kong:3.9.4 --errlog-level error spec/unit.lua
-python3 spec/integration.py --image kong:3.9.4 --workers 2
-luacheck kong spec/unit.lua
-```
-
-可选：使用已有 DataKit 二进制验证配套 Pipeline 的字段、Header 和原始时间解析：
-
-```sh
-python3 spec/datakit_pipeline.py --binary /usr/local/datakit/datakit
-```
-
-该验证在禁用网络的容器内执行，仅挂载二进制和示例 Pipeline，不读取、修改宿主机
-DataKit 配置。真实工作空间入库需要部署后另外验证。
-
-采用 [Apache License 2.0](LICENSE)。官方协议参考：
-[Kong 插件开发](https://developer.konghq.com/custom-plugins/)、
-[DataKit Log Streaming](https://docs.guance.com/integrations/logstreaming/)。
+采用 [Apache License 2.0](LICENSE)。
